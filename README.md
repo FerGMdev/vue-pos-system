@@ -1,26 +1,48 @@
 # Real Estate Admin Panel
 
-This full-stack application is an admin panel for a real estate company. It allows authenticated users to create, update and delete properties, as well as upload images and view the location of properties on a map.
+This full-stack is a point of sale system that allows users to manage the inventory of products (hoodies, sneakers, glasses), record sales, apply discounts, and generate daily sales reports. The application features a user-friendly interface with a shopping cart, discount coupon management, and real-time stock updates. The admin panel provides comprehensive sales analytics, including a calendar-based sales history and detailed transaction records. The application is built using Vue.js, Tailwind CSS, Form Kit, and Firebase for authentication, database, and file storage, providing a robust and scalable solution for small to medium-sized retail businesses.
 
 
 ## Features
+Inventory Management
 
-- User authentication with Firebase
-- Creation, update, and deletion of properties
-- Uploading of property images to Firebase storage
-- Visualization of property locations on a map
-- Filtering of properties by characteristics (such as having a pool)
+- Add, update, and delete products
+- Track real-time stock levels
+- Receive notifications for low-stock items
 
+Sales Tracking
+
+- Record sales transactions
+- Apply discounts and coupons
+- Generate daily, weekly, and monthly sales reports
+
+User Interface
+
+- Intuitive shopping cart experience
+- Discount coupon management
+- Real-time stock updates
+
+Analytics and Reporting
+
+- Calendar-based sales history
+- Detailed transaction records
+- Sales analytics and insights
+
+Product Categorization
+
+- Organize inventory by product categories
+- Enhance customer shopping experience
+- Facilitate targeted marketing and promotions
 
 ## Technologies Used
 
 - Vue 3
-- Vuetify
 - Vue Fire
 - Vue Router
 - Pinia
 - TailwindCSS
 - Firebase
+- Custom calendar component
 ## Screenshots
 
 ![Screenshot 2024-09-27 at 14-56-09 Vite App](https://github.com/user-attachments/assets/4e59f5e6-5910-415f-8668-f73a1eef5083)
