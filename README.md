@@ -1,7 +1,6 @@
-# Real Estate Admin Panel
+# Point of Sale with Vue
 
 This full-stack is a point of sale system that allows users to manage the inventory of products (hoodies, sneakers, glasses), record sales, apply discounts, and generate daily sales reports. The application features a user-friendly interface with a shopping cart, discount coupon management, and real-time stock updates. The admin panel provides comprehensive sales analytics, including a calendar-based sales history and detailed transaction records. The application is built using Vue.js, Tailwind CSS, Form Kit, and Firebase for authentication, database, and file storage, providing a robust and scalable solution for small to medium-sized retail businesses.
-
 
 ## Features
 Inventory Management
@@ -35,7 +34,6 @@ Product Categorization
 - Facilitate targeted marketing and promotions
 
 ## Technologies Used
-
 - Vue 3
 - Vue Fire
 - Vue Router
