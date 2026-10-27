@@ -4,9 +4,7 @@ import { useFirestore, useCollection, useFirebaseStorage } from "vuefire";
 import {
   collection,
   addDoc,
-  where,
   query,
-  limit,
   orderBy,
   updateDoc,
   doc,
@@ -14,13 +12,6 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
-
-/**
- * ============================== NOTES ==============================
- * -> categories: Array with the categories of the products
- * -> categoryOptions: Computed property that returns the categories options for the form. We do this because this is how FormKit needs the options to be passed.
- * -> createProduct: Function to create a new product
- */
 
 export const useProductsStore = defineStore("products", () => {
   const db = useFirestore();
@@ -38,32 +29,63 @@ export const useProductsStore = defineStore("products", () => {
   const productsCollection = useCollection(q);
 
   async function createProduct(product) {
-    await addDoc(collection(db, "products"), product);
+    if (!product?.name || product?.price === undefined || product?.price === null || product?.availability === undefined || product?.availability === null) {
+      throw new Error("Datos de producto incompletos");
+    }
+    const price = Number(product.price);
+    const availability = Number(product.availability);
+    if (isNaN(price) || price < 0) throw new Error("Precio inválido");
+    if (isNaN(availability) || availability < 0)
+      throw new Error("Disponibilidad inválida");
+
+    await addDoc(collection(db, "products"), {
+      ...product,
+      price,
+      availability,
+    });
   }
 
   async function updateProduct(docRef, product) {
     const { image, url, ...values } = product;
-    await updateDoc(docRef, values);
+    const updateData = { ...values };
+    if (values.price !== undefined && values.price !== "") updateData.price = Number(values.price);
+    if (values.availability !== undefined && values.availability !== "") updateData.availability = Number(values.availability);
 
-    if (image.length) {
-      await updateDoc(docRef, {
-        ...values,
-        image: url.value,
-      });
-    } else {
-      await updateDoc(docRef, values);
+    if (image && image.length) {
+      updateData.image = url?.value;
     }
+
+    await updateDoc(docRef, updateData);
   }
 
   async function deleteProduct(id) {
-    console.log("ID del producto a eliminar:", id);
-    if (confirm("¿Estás seguro de eliminar éste producto?")) {
+    if (!id) return;
+    if (!confirm("¿Estás seguro de eliminar éste producto?")) {
+      return;
+    }
+    try {
       const docRef = doc(db, "products", id);
       const docSnap = await getDoc(docRef);
-      const { image } = docSnap.data();
-      const imageRef = storageRef(storage, image);
+      if (!docSnap.exists()) {
+        await deleteDoc(docRef);
+        return;
+      }
+      const data = docSnap.data();
+      const image = data?.image;
 
-      await Promise.all([deleteDoc(docRef), deleteObject(imageRef)]);
+      const tasks = [deleteDoc(docRef)];
+      if (image) {
+        try {
+          const imageRef = storageRef(storage, image);
+          tasks.push(deleteObject(imageRef));
+        } catch (err) {
+          console.warn("No se pudo eliminar la imagen del producto:", err);
+        }
+      }
+      await Promise.allSettled(tasks);
+    } catch (error) {
+      console.error("Error al eliminar el producto:", error);
+      alert("Error al eliminar el producto. Intenta nuevamente.");
     }
   }
 
@@ -91,7 +113,7 @@ export const useProductsStore = defineStore("products", () => {
           selectCategory.value === "" ||
           product.category === selectCategory.value
       )
-      .filter((product) => product.availability > 0);
+      .filter((product) => Number(product.availability) > 0);
   });
 
   return {

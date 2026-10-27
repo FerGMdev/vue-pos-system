@@ -7,34 +7,36 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
-/**
- * ============================== NOTES ==============================
- * -> file: file to upload. In this case, we use position 0 because we only have one file.
- * -> filename: name of the file. We use the uid to generate a unique name.
- * -> sRef: reference to the storage. It needs two arguments:
- *  1. The storage instance.
- *  2. The path where the file will be stored.
- * -> uploadTask: task to upload the file to Firebase Storage. And takes two arguments:
- *  1. The reference to the storage.
- *  2. The file to upload.
- * -> uploadTask.on("state_changed"): This is an event listener that is triggered during the upload process. And take as arguments three functions:
- *  1. snapshot: contains information about the upload progress.
- *  2. error: triggered when an error occurs.
- *  3. complete: triggered when the upload is complete.
- * -> getDownloadURL(uploadTask.snapshot.ref): This function returns a promise that resolves to the download URL of the file.
- * ============================== End of NOTES ==============================
- */
-
 export default function useImage() {
   const storage = useFirebaseStorage();
   const url = ref("");
+  const uploadProgress = ref(0);
+  const uploadError = ref("");
+  const isUploading = ref(false);
 
   const onFileChange = (event) => {
-    const file = event.target.files[0];
-    const filename = uid() + ".jpg";
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      uploadError.value = "Formato de imagen no válido. Usa JPG, PNG o WebP.";
+      return;
+    }
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      uploadError.value = "La imagen es muy grande. Máximo 5MB.";
+      return;
+    }
+
+    uploadError.value = "";
+    isUploading.value = true;
+    uploadProgress.value = 0;
+
+    const extension = file.type.split("/")[1] === "jpeg" ? "jpg" : file.type.split("/")[1];
+    const filename = uid() + "." + extension;
     const sRef = storageRef(storage, "products/" + filename);
 
-    // Upload the file to Firebase Storage
     const uploadTask = uploadBytesResumable(sRef, file);
 
     uploadTask.on(
@@ -42,16 +44,24 @@ export default function useImage() {
       (snapshot) => {
         const progress =
           (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        console.log("Upload is", progress, "% done");
+        uploadProgress.value = Math.round(progress);
       },
       (error) => {
         console.error("Error uploading file:", error);
+        uploadError.value = "Error al subir la imagen. Intenta nuevamente.";
+        isUploading.value = false;
       },
       () => {
-        console.log("File uploaded successfully");
-        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-          url.value = downloadURL;
-        });
+        getDownloadURL(uploadTask.snapshot.ref)
+          .then((downloadURL) => {
+            url.value = downloadURL;
+            isUploading.value = false;
+          })
+          .catch((error) => {
+            console.error("Error getting download URL:", error);
+            uploadError.value = "Error al obtener la URL de la imagen.";
+            isUploading.value = false;
+          });
       }
     );
   };
@@ -61,5 +71,8 @@ export default function useImage() {
     onFileChange,
     url,
     isImageUploaded,
+    uploadProgress,
+    uploadError,
+    isUploading,
   };
 }

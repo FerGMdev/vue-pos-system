@@ -17,30 +17,42 @@ export const useCouponStore = defineStore("coupon", () => {
   ];
 
   watch(discountPercentage, () => {
-    discount.value = (cartStore.total * discountPercentage.value).toFixed(2);
+    const base = Number(cartStore.subtotal || 0);
+    discount.value = Number((base * discountPercentage.value).toFixed(2));
   });
 
   function applyCoupon() {
     couponValidateMessage.value = "Validando cupón...";
-    if (VALID_COUPONS.some((coupon) => coupon.name === couponInput.value)) {
+    if (cartStore.subtotal <= 0) {
       setTimeout(() => {
-        discountPercentage.value = VALID_COUPONS.find(
-          (coupon) => coupon.name === couponInput.value
-        ).discount;
-        couponValidateMessage.value = `¡Cupón del ${
-          discountPercentage.value * 100
-        }% aplicado correctamente!`;
-      }, 3000);
+        couponInput.value = "";
+        couponValidateMessage.value = "Agrega productos al carrito para aplicar un cupón";
+      }, 800);
+      setTimeout(() => {
+        couponValidateMessage.value = "";
+      }, 4000);
+      return;
+    }
+    const found = VALID_COUPONS.find(
+      (coupon) => coupon.name === couponInput.value.trim().toUpperCase()
+    );
+    if (found) {
+      setTimeout(() => {
+        discountPercentage.value = found.discount;
+        couponValidateMessage.value = `¡Cupón del ${found.discount * 100}% aplicado correctamente!`;
+      }, 800);
     } else {
       setTimeout(() => {
         couponInput.value = "";
         couponValidateMessage.value = "Cupón no válido";
-      }, 3000);
+        discountPercentage.value = 0;
+        discount.value = 0;
+      }, 800);
     }
 
     setTimeout(() => {
       couponValidateMessage.value = "";
-    }, 7000);
+    }, 6000);
   }
 
   function $reset() {

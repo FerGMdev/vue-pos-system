@@ -8,24 +8,25 @@ export const useSalesStore = defineStore("sales", () => {
   const db = useFirestore();
 
   const salesSource = computed(() => {
-    if (dateValue.value) {
-      const q = query(
-        collection(db, "sales"),
-        where("createdAt", "==", dateValue.value)
-      );
-      return q;
-    }
+    if (!dateValue.value) return null;
+    return query(
+      collection(db, "sales"),
+      where("createdAt", "==", dateValue.value)
+    );
   });
 
   const salesCollection = useCollection(salesSource);
 
-  const isDateSelected = computed(() => dateValue.value);
+  const isDateSelected = computed(() => !!dateValue.value);
 
-  const noSales = computed(() => !salesCollection.length && dateValue.value);
+  const noSales = computed(
+    () => isDateSelected.value && salesCollection.value?.length === 0
+  );
 
   const totalSalesByDay = computed(() => {
+    if (!salesCollection.value) return 0;
     return salesCollection.value.reduce((acc, sale) => {
-      return acc + sale.total;
+      return acc + Number(sale.total || 0);
     }, 0);
   });
 

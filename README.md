@@ -1,49 +1,97 @@
 # Point of Sale with Vue
 
-This full-stack is a point of sale system that allows users to manage the inventory of products (hoodies, sneakers, glasses), record sales, apply discounts, and generate daily sales reports. The application features a user-friendly interface with a shopping cart, discount coupon management, and real-time stock updates. The admin panel provides comprehensive sales analytics, including a calendar-based sales history and detailed transaction records. The application is built using Vue.js, Tailwind CSS, Form Kit, and Firebase for authentication, database, and file storage, providing a robust and scalable solution for small to medium-sized retail businesses.
+Sistema de Punto de Venta (POS) construido con Vue 3, Pinia, Vue Router, Tailwind CSS, FormKit y Firebase (Firestore, Storage).
 
-## Features
-Inventory Management
+## Características
 
-- Add, update, and delete products
-- Track real-time stock levels
-- Receive notifications for low-stock items
+- **Inventario:** Agregar, editar y eliminar productos con imagen
+- **Ventas:** Carrito de compras, cupones de descuento, cálculo de impuestos
+- **Administración:** Panel para gestionar productos y ver ventas por fecha
+- **Tiempo real:** Sincronización con Firestore
 
-Sales Tracking
+## Tecnologías
 
-- Record sales transactions
-- Apply discounts and coupons
-- Generate daily, weekly, and monthly sales reports
+- [Vue 3](https://vuejs.org/)
+- [Pinia](https://pinia.vuejs.org/)
+- [Vue Router](https://router.vuejs.org/)
+- [VueFire](https://vuefire.vuejs.org/)
+- [Firebase](https://firebase.google.com/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [FormKit](https://formkit.com/)
+- [Vite](https://vitejs.dev/)
 
-User Interface
+## Requisitos
 
-- Intuitive shopping cart experience
-- Discount coupon management
-- Real-time stock updates
+- Node.js 18+
+- Cuenta de Firebase con Firestore y Storage habilitados
 
-Analytics and Reporting
+## Instalación
 
-- Calendar-based sales history
-- Detailed transaction records
-- Sales analytics and insights
+1. Clonar el repositorio
+```bash
+git clone https://github.com/FerGMdev/vue-pos-system.git
+cd vue-pos-system
+```
 
-Product Categorization
+2. Instalar dependencias
+```bash
+npm install
+```
 
-- Organize inventory by product categories
-- Enhance customer shopping experience
-- Facilitate targeted marketing and promotions
+3. Configurar variables de entorno
+Copia `.env.example` a `.env` y completa con tus credenciales de Firebase:
+```bash
+cp .env.example .env
+```
 
-## Technologies Used
-- Vue 3
-- Vue Fire
-- Vue Router
-- Pinia
-- TailwindCSS
-- Firebase
-- Custom calendar component
-## Screenshots
+Edita `.env` con los valores de tu proyecto Firebase (Configuración del proyecto > General > Tus apps).
 
-![Screenshot 2024-09-27 at 14-56-09 Vite App](https://github.com/user-attachments/assets/4e59f5e6-5910-415f-8668-f73a1eef5083)
-![Screenshot 2024-09-27 at 14-57-12 Vite App](https://github.com/user-attachments/assets/c722c876-918b-451d-923f-aae06755e8cb)
-![Screenshot 2024-09-27 at 15-03-32 Vite App](https://github.com/user-attachments/assets/954c915d-0817-4bf1-bf40-60bd8a05edab)
-![Screenshot 2024-09-27 at 15-04-19 Vite App](https://github.com/user-attachments/assets/b462efdd-ad86-4732-af4d-10b2e198fe86)
+4. Configurar reglas de Firebase (solo desarrollo)
+
+**Firestore Rules:**
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+**Storage Rules:**
+```javascript
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+> ⚠️ **IMPORTANTE:** Las reglas abiertas son solo para desarrollo/curso. Para producción implementa autenticación y reglas restrictivas.
+
+5. Ejecutar en desarrollo
+```bash
+npm run dev
+```
+
+## Uso
+
+- **Tienda (`/`)**: Agregar productos al carrito, aplicar cupones, realizar venta
+- **Admin (`/admin`)**: Protegido por guard. Redirige a `/`. Para desarrollo en curso, comenta el guard en `src/router/index.js`
+
+## Scripts
+
+```bash
+npm run dev      # Servidor de desarrollo
+npm run build    # Build de producción
+npm run preview  # Preview del build
+```
+
+## Seguridad
+
+- Este proyecto es educativo. Antes de comercializarlo necesitas: implementar autenticación, control de roles, reglas restrictivas de Firebase, validación server-side y auditoría de ventas.
