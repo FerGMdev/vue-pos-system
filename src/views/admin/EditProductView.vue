@@ -1,149 +1,102 @@
 <script setup>
-import { watch, reactive } from "vue";
+import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { doc } from "firebase/firestore";
-import { useFirestore, useDocument } from "vuefire";
-import LinkComponent from "@/components/LinkComponent.vue";
+import ProductForm from "@/components/ProductForm.vue";
+import StateMessage from "@/components/StateMessage.vue";
 import { useProductsStore } from "@/stores/products";
-import useImage from "@/composables/useImage";
+import { useUiStore } from "@/stores/ui";
 
-// Consultar Firestore
 const route = useRoute();
 const router = useRouter();
-
-const db = useFirestore();
-const docRef = doc(db, "products", route.params.id);
-const product = useDocument(docRef);
-
-const { onFileChange, url, isImageUploaded } = useImage();
 const productsStore = useProductsStore();
+const uiStore = useUiStore();
 
-const formData = reactive({
-  name: "",
-  category: "",
-  price: "",
-  availability: "",
-  image: "",
-});
+const product = ref(null);
+const loading = ref(false);
+const error = ref("");
+const submitting = ref(false);
+const submitError = ref("");
 
-watch(product, (product) => {
-  console.log("product", product);
-  if (!product) {
-    router.push({ name: "admin-products" });
+async function loadProduct() {
+  const id = route.params.id;
+  product.value = null;
+  error.value = "";
+
+  if (!id) {
+    error.value = "No se indicó el producto a editar.";
+    return;
   }
-  Object.assign(formData, product);
-});
 
-const submitHandler = async (data) => {
+  loading.value = true;
   try {
-    await productsStore.updateProduct(docRef, { ...data, url });
-    router.push({ name: "products" });
-  } catch (error) {
-    console.log("Error al actualizar el producto:", error);
+    product.value = await productsStore.fetchProduct(String(id));
+  } catch (loadError) {
+    error.value =
+      loadError?.message || "No se pudo cargar el producto solicitado.";
+  } finally {
+    loading.value = false;
   }
-};
+}
+
+async function handleSubmit(payload) {
+  submitting.value = true;
+  submitError.value = "";
+
+  try {
+    await productsStore.updateProduct(product.value.id, payload);
+    uiStore.success("Producto actualizado correctamente.");
+    router.push({ name: "products" });
+  } catch (updateError) {
+    submitError.value =
+      updateError?.message || "No se pudo actualizar el producto.";
+    uiStore.error(submitError.value);
+  } finally {
+    submitting.value = false;
+  }
+}
+
+watch(() => route.params.id, loadProduct, { immediate: true });
 </script>
 
 <template>
-  <div class="mt-10">
-    <LinkComponent to="products"> Volver </LinkComponent>
-    <h1 class="text-2xl font-bold my-4">Editar producto</h1>
-    <div class="flex justify-center bg-white p-4 rounded-md shadow">
-      <div class="mt-10 p-10 w-full 2xl:w-2/4">
-        <!-- ============== Formulario ============== -->
-        <FormKit
-          type="form"
-          submit-label="Guardar Cambios"
-          incomplete-message="No se pudo agregar el producto, por favor verifica todos los datos"
-          @submit="submitHandler"
-          :value="formData"
-        >
-          <!-- ============== Nombre del producto ============== -->
-          <FormKit
-            label="Nombre"
-            name="name"
-            type="text"
-            placeholder="Nombre del producto"
-            validation="required"
-            :validation-messages="{
-              required: 'El nombre del producto es requerido',
-            }"
-            v-model.trim="formData.name"
-          />
+  <section aria-labelledby="edit-product-title">
+    <h1 id="edit-product-title" class="mb-6 text-2xl font-bold text-slate-800">
+      Editar producto
+    </h1>
 
-          <!-- ============== Imagen del producto ============== -->
-          <FormKit
-            type="file"
-            label="Cambiar Imagen"
-            name="image"
-            multiple="false"
-            accept=".jpg"
-            @change="onFileChange"
-          />
+    <StateMessage
+      v-if="loading"
+      variant="loading"
+      title="Cargando producto"
+      message="Estamos consultando la información del producto."
+    />
 
-          <div
-            v-if="isImageUploaded"
-            class="w-96 my-4 shadow rounded-md overflow-hidden"
-          >
-            <p class="text-center text-lg text-gray-500">Nueva Imágen</p>
-            <img
-              class="w-full h-full object-cover"
-              :src="url"
-              alt="Imagen del producto"
-            />
-          </div>
+    <StateMessage
+      v-else-if="error"
+      variant="error"
+      title="No se pudo cargar el producto"
+      :message="error"
+      @retry="loadProduct"
+    />
 
-          <div v-else class="w-96 my-4 shadow rounded-md overflow-hidden">
-            <p class="text-center text-lg text-gray-500">Imágen Actual</p>
-            <img
-              :src="formData.image"
-              :alt="'Imagen de' + formData.image"
-              class="w-full h-full object-cover"
-            />
-          </div>
-          <!-- ============== Categoría del producto ============== -->
-          <FormKit
-            label="Categoría"
-            name="category"
-            type="select"
-            placeholder="Categoría del producto"
-            validation="required"
-            :validation-messages="{
-              required: 'La categoría del producto es requerida',
-            }"
-            :options="productsStore.categoryOptions"
-            v-model.trim="formData.category"
-          />
+    <template v-else-if="product">
+      <p
+        v-if="submitError"
+        class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+        role="alert"
+      >
+        {{ submitError }}
+      </p>
 
-          <!-- ============== Precio del producto ============== -->
-          <FormKit
-            label="Precio ($)"
-            name="price"
-            type="number"
-            placeholder="Precio del producto"
-            validation="required"
-            :validation-messages="{
-              required: 'El precio del producto es requerido',
-            }"
-            min="1"
-            v-model.number="formData.price"
-          />
-
-          <!-- ============== Disponibilidad del producto ============== -->
-          <FormKit
-            label="Disponibilidad"
-            name="availability"
-            type="number"
-            placeholder="Disponibilidad del producto"
-            validation="required"
-            :validation-messages="{
-              required: 'La cantidad es requerida',
-            }"
-            min="1"
-            v-model.number="formData.availability"
-          />
-        </FormKit>
-      </div>
-    </div>
-  </div>
+      <ProductForm
+        :key="product.id"
+        :initial-values="product"
+        :existing-image="product.image"
+        :existing-image-path="product.imagePath"
+        submit-label="Guardar cambios"
+        :submitting="submitting"
+        @submit="handleSubmit"
+      />
+    </template>
+  </section>
 </template>

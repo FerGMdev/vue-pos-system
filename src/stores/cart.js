@@ -1,173 +1,241 @@
-import { ref, computed, watchEffect } from "vue";
-import { useCouponStore } from "./coupons";
+import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { collection, addDoc, runTransaction, doc } from "firebase/firestore";
-import { useFirestore } from "vuefire";
-import { getCurrentDate } from "@/helpers";
+import { calculateTotals } from "@shared/pricing.js";
+import { checkoutSale } from "@/api/sales.api";
+import { useAuthStore } from "./auth";
+import { useConfigStore } from "./config";
+import { useCouponStore } from "./coupons";
+import { createUuid } from "@/utils/uuid";
 
 export const useCartStore = defineStore("cart", () => {
+  const authStore = useAuthStore();
+  const configStore = useConfigStore();
   const couponStore = useCouponStore();
-  const db = useFirestore();
 
   const items = ref([]);
-  const subtotal = ref(0);
-  const taxes = ref(0);
-  const total = ref(0);
+  const isCheckingOut = ref(false);
+  const checkoutError = ref("");
+  const checkoutId = ref(null);
 
-  const MAX_PRODUCT_QUANTITY = 5;
-  const TAX_RATE = 0.1;
+  const totals = computed(() =>
+    calculateTotals({
+      items: items.value,
+      taxRate: configStore.taxRate,
+      discountPercentage: couponStore.discountPercentage,
+    })
+  );
 
-  watchEffect(() => {
-    subtotal.value = Number(
-      items.value
-        .reduce((acc, item) => acc + Number(item.price) * Number(item.quantity), 0)
-        .toFixed(2)
-    );
-    taxes.value = Number((subtotal.value * TAX_RATE).toFixed(2));
-    total.value = Number(
-      (subtotal.value + taxes.value - Number(couponStore.discount || 0)).toFixed(2)
-    );
-  });
+  const subtotal = computed(() => totals.value.subtotal);
+  const discount = computed(() => totals.value.discount);
+  const taxes = computed(() => totals.value.taxes);
+  const total = computed(() => totals.value.total);
+  const isCartEmpty = computed(() => items.value.length === 0);
+  const maxItemQuantity = computed(() => configStore.maxItemQuantity);
+  const itemCount = computed(() =>
+    items.value.reduce((accumulator, item) => accumulator + item.quantity, 0)
+  );
 
-  function isItemInCart(itemId) {
-    return items.value.findIndex((i) => i.id === itemId);
+  function invalidateCheckoutId() {
+    checkoutId.value = null;
   }
 
-  function addItemToCart(item) {
-    if (!item || item.availability === undefined || item.availability === null) {
-      alert("Producto inválido");
-      return;
-    }
-    if (Number(item.availability) <= 0) {
-      alert("Producto sin stock");
-      return;
+  function maxSelectableQuantity(item) {
+    return Math.min(
+      Math.max(0, Number(item.availability) || 0),
+      configStore.maxItemQuantity
+    );
+  }
+
+  function addItem(product) {
+    if (!product?.id || !Number.isFinite(Number(product.price))) {
+      return { success: false, message: "Producto inválido." };
     }
 
-    const itemIndex = isItemInCart(item.id);
+    const availability = Math.max(0, Number(product.availability) || 0);
+    if (availability <= 0) {
+      return { success: false, message: "Este producto no tiene stock." };
+    }
 
-    if (itemIndex >= 0) {
-      const currentQty = items.value[itemIndex].quantity;
-      if (currentQty >= Number(item.availability)) {
-        alert("No hay suficiente stock para este producto");
-        return;
+    const limit = Math.min(availability, configStore.maxItemQuantity);
+    const existing = items.value.find((item) => item.id === product.id);
+
+    if (existing) {
+      if (existing.quantity >= limit) {
+        const message =
+          availability <= configStore.maxItemQuantity
+            ? "No hay suficiente stock para agregar más unidades."
+            : `Puedes agregar hasta ${configStore.maxItemQuantity} unidades por producto.`;
+        return { success: false, message };
       }
-      if (currentQty >= MAX_PRODUCT_QUANTITY) {
-        alert("Has llegado al límite para este producto");
-        return;
-      }
-      items.value[itemIndex].quantity++;
+      existing.quantity += 1;
     } else {
-      if (MAX_PRODUCT_QUANTITY < 1) {
-        alert("No se puede agregar este producto");
-        return;
-      }
-      items.value.push({ ...item, quantity: 1, id: item.id });
+      items.value.push({
+        id: product.id,
+        name: product.name,
+        price: Number(product.price),
+        image: product.image ?? "",
+        availability,
+        quantity: 1,
+      });
     }
+
+    invalidateCheckoutId();
+    return { success: true };
   }
 
   function updateQuantity(itemId, quantity) {
-    const qty = Number(quantity);
-    if (isNaN(qty) || qty <= 0) {
-      removeItemFromCart(itemId);
-      return;
+    const parsed = Math.trunc(Number(quantity));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      removeItem(itemId);
+      return { success: true };
     }
-    const itemIndex = isItemInCart(itemId);
-    if (itemIndex < 0) return;
-    const item = items.value[itemIndex];
-    if (qty > Number(item.availability)) {
-      alert("No hay suficiente stock para esta cantidad");
-      return;
+
+    const item = items.value.find((entry) => entry.id === itemId);
+    if (!item) return { success: false, message: "Producto no encontrado." };
+
+    const limit = maxSelectableQuantity(item);
+    if (parsed > limit) {
+      const message =
+        Number(item.availability) <= configStore.maxItemQuantity
+          ? "No hay suficiente stock para esa cantidad."
+          : `El máximo por producto es ${configStore.maxItemQuantity}.`;
+      return { success: false, message };
     }
-    if (qty > MAX_PRODUCT_QUANTITY) {
-      alert("Has llegado al límite para este producto");
-      return;
-    }
-    items.value[itemIndex].quantity = qty;
+
+    item.quantity = parsed;
+    invalidateCheckoutId();
+    return { success: true };
   }
 
-  function removeItemFromCart(itemId) {
+  function removeItem(itemId) {
     items.value = items.value.filter((item) => item.id !== itemId);
+    invalidateCheckoutId();
+  }
+
+  /**
+   * Reconcile the cart with fresh inventory data. This prevents selling a
+   * product that was removed, ran out of stock or changed price in another tab.
+   */
+  function syncWithProducts(products) {
+    const productsById = new Map(products.map((product) => [product.id, product]));
+    const removed = [];
+    let changed = false;
+
+    items.value = items.value.reduce((accumulator, item) => {
+      const product = productsById.get(item.id);
+      const availability = Math.max(0, Number(product?.availability) || 0);
+
+      if (!product || availability <= 0) {
+        removed.push(item.name);
+        changed = true;
+        return accumulator;
+      }
+
+      const nextQuantity = Math.min(
+        item.quantity,
+        availability,
+        configStore.maxItemQuantity
+      );
+      const nextPrice = Number(product.price);
+
+      if (
+        nextQuantity !== item.quantity ||
+        nextPrice !== item.price ||
+        product.name !== item.name ||
+        product.image !== item.image
+      ) {
+        changed = true;
+      }
+
+      accumulator.push({
+        ...item,
+        name: product.name,
+        price: nextPrice,
+        image: product.image ?? "",
+        availability,
+        quantity: nextQuantity,
+      });
+      return accumulator;
+    }, []);
+
+    if (changed) invalidateCheckoutId();
+    return { changed, removed };
+  }
+
+  function clear() {
+    items.value = [];
+    checkoutError.value = "";
+    invalidateCheckoutId();
   }
 
   async function checkout() {
+    if (items.value.length === 0) {
+      return { success: false, message: "El carrito está vacío." };
+    }
+
+    if (!authStore.isAuthenticated) {
+      return {
+        success: false,
+        requiresAuth: true,
+        message: "Inicia sesión para confirmar la venta.",
+      };
+    }
+
+    if (isCheckingOut.value) {
+      return { success: false, message: "La venta ya se está procesando." };
+    }
+
+    if (!checkoutId.value) {
+      checkoutId.value = createUuid();
+    }
+
+    isCheckingOut.value = true;
+    checkoutError.value = "";
+
     try {
-      if (items.value.length === 0) {
-        alert("El carrito está vacío");
-        return;
-      }
-
-      for (const item of items.value) {
-        if (!item.id) throw new Error("Producto inválido");
-        if (Number(item.quantity) <= 0) throw new Error("Cantidad inválida");
-        if (Number(item.quantity) > MAX_PRODUCT_QUANTITY) {
-          throw new Error(`Cantidad máxima permitida: ${MAX_PRODUCT_QUANTITY}`);
-        }
-      }
-
-      await Promise.all(
-        items.value.map(async (item) => {
-          const productRef = doc(db, "products", item.id);
-          await runTransaction(db, async (transaction) => {
-            const currentProduct = await transaction.get(productRef);
-            if (!currentProduct.exists()) {
-              throw new Error("Producto no existe");
-            }
-            const currentAvailability = Number(currentProduct.data().availability || 0);
-            if (currentAvailability < Number(item.quantity)) {
-              throw new Error(`Stock insuficiente para ${item.name}`);
-            }
-            const availability = currentAvailability - Number(item.quantity);
-            transaction.update(productRef, { availability });
-          });
-        })
-      );
-
-      await addDoc(collection(db, "sales"), {
-        items: items.value.map((item) => {
-          const { availability, category, ...data } = item;
-          return data;
-        }),
-        subtotal: subtotal.value,
-        taxes: taxes.value,
-        total: total.value,
-        discount: Number(couponStore.discount || 0),
-        createdAt: getCurrentDate(),
+      const sale = await checkoutSale({
+        checkoutId: checkoutId.value,
+        items: items.value.map((item) => ({
+          id: item.id,
+          quantity: item.quantity,
+        })),
+        couponCode: couponStore.appliedCoupon?.code ?? null,
       });
 
-      $reset();
-      couponStore.$reset();
+      clear();
+      couponStore.reset();
+      return { success: true, sale };
     } catch (error) {
-      console.error("Error al procesar la venta:", error);
-      alert(error?.message || "Error al procesar la venta. Intenta nuevamente.");
+      checkoutError.value =
+        error?.message || "No se pudo procesar la venta. Intenta nuevamente.";
+      return {
+        success: false,
+        message: checkoutError.value,
+        code: error?.code,
+        details: error?.details,
+      };
+    } finally {
+      isCheckingOut.value = false;
     }
   }
 
-  function $reset() {
-    items.value = [];
-    subtotal.value = 0;
-    taxes.value = 0;
-    total.value = 0;
-  }
-
-  const isCartEmpty = computed(() => items.value.length === 0);
-
-  const checkProductAvailability = computed(() => {
-    return (product) =>
-      Number(product.availability) < MAX_PRODUCT_QUANTITY
-        ? Number(product.availability)
-        : MAX_PRODUCT_QUANTITY;
-  });
-
   return {
     items,
+    isCheckingOut,
+    checkoutError,
     subtotal,
+    discount,
     taxes,
     total,
-    addItemToCart,
-    updateQuantity,
-    removeItemFromCart,
-    checkout,
     isCartEmpty,
-    checkProductAvailability,
+    itemCount,
+    maxItemQuantity,
+    maxSelectableQuantity,
+    addItem,
+    updateQuantity,
+    removeItem,
+    syncWithProducts,
+    clear,
+    checkout,
   };
 });

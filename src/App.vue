@@ -1,11 +1,9 @@
 <script setup>
-import { RouterView, RouterLink } from "vue-router";
+import { RouterView } from "vue-router";
+import ToastContainer from "@/components/ToastContainer.vue";
 </script>
 
 <template>
-  <div>
-    <RouterView />
-  </div>
+  <RouterView />
+  <ToastContainer />
 </template>
-
-<style lang="css" scoped></style>

@@ -1,6 +1,7 @@
-/** @type {import('tailwindcss').Config} */
 import colors from "tailwindcss/colors";
+import forms from "@tailwindcss/forms";
 
+/** @type {import('tailwindcss').Config} */
 export default {
   content: [
     "./index.html",
@@ -15,5 +16,5 @@ export default {
       },
     },
   },
-  plugins: [require("@tailwindcss/forms")],
+  plugins: [forms],
 };
