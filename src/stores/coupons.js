@@ -1,76 +1,66 @@
-import { ref, watch, computed } from "vue";
+import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { useCartStore } from "./cart";
+import { validateCoupon } from "@/api/coupons.api";
 
-export const useCouponStore = defineStore("coupon", () => {
-  const cartStore = useCartStore();
+export const useCouponStore = defineStore("coupons", () => {
+  const code = ref("");
+  const appliedCoupon = ref(null);
+  const loading = ref(false);
+  const error = ref("");
+  const message = ref("");
 
-  const couponInput = ref("");
-  const couponValidateMessage = ref("");
-  const discountPercentage = ref(0);
-  const discount = ref(0);
+  async function apply() {
+    const normalized = code.value.trim().toUpperCase();
+    error.value = "";
+    message.value = "";
 
-  const VALID_COUPONS = [
-    { name: "10DESCUENTO", discount: 0.1 },
-    { name: "20DESCUENTO", discount: 0.2 },
-    { name: "30DESCUENTO", discount: 0.3 },
-  ];
-
-  watch(discountPercentage, () => {
-    const base = Number(cartStore.subtotal || 0);
-    discount.value = Number((base * discountPercentage.value).toFixed(2));
-  });
-
-  function applyCoupon() {
-    couponValidateMessage.value = "Validando cupón...";
-    if (cartStore.subtotal <= 0) {
-      setTimeout(() => {
-        couponInput.value = "";
-        couponValidateMessage.value = "Agrega productos al carrito para aplicar un cupón";
-      }, 800);
-      setTimeout(() => {
-        couponValidateMessage.value = "";
-      }, 4000);
-      return;
-    }
-    const found = VALID_COUPONS.find(
-      (coupon) => coupon.name === couponInput.value.trim().toUpperCase()
-    );
-    if (found) {
-      setTimeout(() => {
-        discountPercentage.value = found.discount;
-        couponValidateMessage.value = `¡Cupón del ${found.discount * 100}% aplicado correctamente!`;
-      }, 800);
-    } else {
-      setTimeout(() => {
-        couponInput.value = "";
-        couponValidateMessage.value = "Cupón no válido";
-        discountPercentage.value = 0;
-        discount.value = 0;
-      }, 800);
+    if (!normalized) {
+      error.value = "Ingresa un código de cupón.";
+      return { success: false, message: error.value };
     }
 
-    setTimeout(() => {
-      couponValidateMessage.value = "";
-    }, 6000);
+    loading.value = true;
+    try {
+      const coupon = await validateCoupon(normalized);
+      appliedCoupon.value = coupon;
+      code.value = coupon.code;
+      message.value = `Cupón ${coupon.code} aplicado: ${coupon.discountPercentage}% de descuento.`;
+      return { success: true, coupon };
+    } catch (applyError) {
+      appliedCoupon.value = null;
+      error.value = applyError?.message || "Cupón no válido.";
+      return { success: false, message: error.value };
+    } finally {
+      loading.value = false;
+    }
   }
 
-  function $reset() {
-    couponInput.value = "";
-    couponValidateMessage.value = "";
-    discountPercentage.value = 0;
-    discount.value = 0;
+  function remove() {
+    appliedCoupon.value = null;
+    code.value = "";
+    error.value = "";
+    message.value = "";
   }
 
-  const isCouponApplied = computed(() => discountPercentage.value > 0);
+  function reset() {
+    remove();
+  }
+
+  const discountPercentage = computed(
+    () => appliedCoupon.value?.percentage ?? 0
+  );
+  const isApplied = computed(() => Boolean(appliedCoupon.value));
 
   return {
-    couponInput,
-    discount,
-    couponValidateMessage,
-    applyCoupon,
-    $reset,
+    code,
+    appliedCoupon,
+    loading,
+    error,
+    message,
+    apply,
+    remove,
+    reset,
     discountPercentage,
-    isCouponApplied,
+    isApplied,
   };
 });

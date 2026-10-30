@@ -14,8 +14,17 @@ dist-ssr
 coverage
 *.local
 
-/cypress/videos/
-/cypress/screenshots/
+# Environment and credentials. Keep the .example files in version control.
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+*.serviceAccount.json
+*service-account*.json
+firebase-debug.log
+.firebase/
 
 # Editor directories and files
 .vscode/*
